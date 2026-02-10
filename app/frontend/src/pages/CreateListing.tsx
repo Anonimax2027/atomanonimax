@@ -4,15 +4,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/components/ui/toast';
-import { client, CRYPTO_TYPES, CITIES } from '@/lib/api';
-import { ArrowLeft, Save, Loader2 } from 'lucide-react';
-
-interface CreateListingProps {
-  user: { id: string } | null;
-}
+import { client, CRYPTO_TYPES } from '@/lib/api';
+import { ArrowLeft, Loader2, Send } from 'lucide-react';
 
 interface Category {
   id: number;
@@ -20,32 +16,62 @@ interface Category {
   slug: string;
 }
 
-export function CreateListing({ user }: CreateListingProps) {
+interface User {
+  data?: {
+    id: string;
+  };
+}
+
+const CITIES = [
+  'Paris', 'Lyon', 'Marseille', 'Toulouse', 'Nice', 'Nantes', 'Strasbourg',
+  'Montpellier', 'Bordeaux', 'Lille', 'Rennes', 'Reims', 'Toulon', 'Grenoble',
+  'Autre'
+];
+
+export function CreateListing() {
   const navigate = useNavigate();
   const { addToast } = useToast();
-  const [loading, setLoading] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     category: '',
     city: '',
     price: '',
-    crypto_type: 'XMR',
+    crypto_type: 'BTC',
     tags: '',
   });
 
   useEffect(() => {
-    if (!user) {
-      navigate('/');
-      return;
-    }
+    checkAuth();
     loadCategories();
-  }, [user, navigate]);
+  }, []);
+
+  const checkAuth = async () => {
+    try {
+      const userData = await client.auth.me();
+      if (userData?.data?.id) {
+        setUser(userData);
+      } else {
+        navigate('/');
+      }
+    } catch (error) {
+      console.error('Auth error:', error);
+      navigate('/');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const loadCategories = async () => {
     try {
-      const response = await client.entities.categories.query({ query: {} });
+      const response = await client.entities.categories.queryAll({
+        sort: 'name',
+      });
       setCategories(response.data.items || []);
     } catch (error) {
       console.error('Error loading categories:', error);
@@ -55,36 +81,52 @@ export function CreateListing({ user }: CreateListingProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.title || !formData.description || !formData.category) {
+    if (!user?.data?.id) {
+      addToast('Vous devez être connecté', 'error');
+      return;
+    }
+
+    if (!formData.title || !formData.description || !formData.category || !formData.price) {
       addToast('Veuillez remplir tous les champs obligatoires', 'error');
       return;
     }
 
-    setLoading(true);
+    setSubmitting(true);
     try {
       await client.entities.listings.create({
         data: {
-          ...formData,
-          price: parseFloat(formData.price) || 0,
-          is_active: true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          user_id: user.data.id,
+          title: formData.title,
+          description: formData.description,
+          category: formData.category,
+          city: formData.city,
+          price: parseFloat(formData.price),
+          crypto_type: formData.crypto_type,
+          tags: formData.tags,
         },
       });
+      
       addToast('Annonce créée avec succès !', 'success');
-      navigate('/listings');
+      navigate('/dashboard');
     } catch (error) {
       console.error('Error creating listing:', error);
-      addToast('Erreur lors de la création de l\'annonce', 'error');
+      addToast('Erreur lors de la création', 'error');
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 pt-20 flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-cyan-400" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 pt-20 pb-12">
       <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Back Button */}
         <Button
           variant="ghost"
           className="mb-6 gap-2"
@@ -98,7 +140,7 @@ export function CreateListing({ user }: CreateListingProps) {
           <CardHeader>
             <CardTitle>Créer une annonce</CardTitle>
             <CardDescription>
-              Publiez votre service ou annonce pour la communauté Anonimax
+              Publiez votre service ou offre de manière anonyme
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -108,7 +150,7 @@ export function CreateListing({ user }: CreateListingProps) {
                 <Label htmlFor="title">Titre *</Label>
                 <Input
                   id="title"
-                  placeholder="Ex: Développement web sur mesure"
+                  placeholder="Ex: Développement web freelance"
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                   required
@@ -128,74 +170,75 @@ export function CreateListing({ user }: CreateListingProps) {
                 />
               </div>
 
-              {/* Category & City */}
-              <div className="grid sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="category">Catégorie *</Label>
-                  <Select
-                    value={formData.category}
-                    onValueChange={(value) => setFormData({ ...formData, category: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Sélectionner" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.map((cat) => (
-                        <SelectItem key={cat.id} value={cat.name}>
-                          {cat.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="city">Ville</Label>
-                  <Select
-                    value={formData.city}
-                    onValueChange={(value) => setFormData({ ...formData, city: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Sélectionner" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {CITIES.map((city) => (
-                        <SelectItem key={city} value={city}>
-                          {city}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              {/* Category */}
+              <div className="space-y-2">
+                <Label htmlFor="category">Catégorie *</Label>
+                <Select
+                  value={formData.category}
+                  onValueChange={(value) => setFormData({ ...formData, category: value })}
+                  required
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sélectionner une catégorie" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.name}>
+                        {cat.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
-              {/* Price & Crypto */}
-              <div className="grid sm:grid-cols-2 gap-4">
+              {/* City */}
+              <div className="space-y-2">
+                <Label htmlFor="city">Ville</Label>
+                <Select
+                  value={formData.city}
+                  onValueChange={(value) => setFormData({ ...formData, city: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sélectionner une ville (optionnel)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CITIES.map((city) => (
+                      <SelectItem key={city} value={city}>
+                        {city}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Price and Crypto */}
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="price">Prix</Label>
+                  <Label htmlFor="price">Prix *</Label>
                   <Input
                     id="price"
                     type="number"
-                    step="0.001"
+                    step="0.0001"
+                    min="0"
                     placeholder="0.00"
                     value={formData.price}
                     onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                    required
                   />
                 </div>
-
                 <div className="space-y-2">
-                  <Label htmlFor="crypto_type">Crypto acceptée</Label>
+                  <Label htmlFor="crypto_type">Crypto *</Label>
                   <Select
                     value={formData.crypto_type}
                     onValueChange={(value) => setFormData({ ...formData, crypto_type: value })}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Sélectionner" />
+                      <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       {CRYPTO_TYPES.map((crypto) => (
-                        <SelectItem key={crypto.value} value={crypto.value}>
-                          {crypto.label}
+                        <SelectItem key={crypto} value={crypto}>
+                          {crypto}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -208,21 +251,24 @@ export function CreateListing({ user }: CreateListingProps) {
                 <Label htmlFor="tags">Mots-clés</Label>
                 <Input
                   id="tags"
-                  placeholder="web, design, marketing (séparés par des virgules)"
+                  placeholder="web, design, crypto (séparés par des virgules)"
                   value={formData.tags}
                   onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
                 />
                 <p className="text-xs text-slate-500">
-                  Ajoutez des mots-clés pour améliorer la visibilité de votre annonce
+                  Ajoutez des mots-clés pour améliorer la visibilité
                 </p>
               </div>
 
-              {/* Submit */}
-              <Button type="submit" disabled={loading} className="w-full gap-2">
-                {loading ? (
+              <Button
+                type="submit"
+                disabled={submitting}
+                className="w-full gap-2"
+              >
+                {submitting ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  <Save className="h-4 w-4" />
+                  <Send className="h-4 w-4" />
                 )}
                 Publier l'annonce
               </Button>

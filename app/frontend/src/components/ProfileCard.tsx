@@ -5,6 +5,7 @@ import { AnonymaxIdDisplay } from '@/components/AnonymaxIdDisplay';
 import { MapPin, MessageCircle, Wallet, Copy, Check, ExternalLink, Send } from 'lucide-react';
 import { useState } from 'react';
 import { truncateAddress } from '@/lib/utils';
+import { getCryptoPaymentUrl, getSessionUrl } from '@/lib/api';
 
 interface ProfileCardProps {
   profile: {
@@ -18,30 +19,6 @@ interface ProfileCardProps {
   showContact?: boolean;
   showActions?: boolean;
 }
-
-// Crypto payment URL generators
-const getCryptoPaymentUrl = (cryptoType: string, address: string): string => {
-  switch (cryptoType?.toUpperCase()) {
-    case 'BTC':
-      return `bitcoin:${address}`;
-    case 'ETH':
-      return `ethereum:${address}`;
-    case 'XMR':
-      return `monero:${address}`;
-    case 'LTC':
-      return `litecoin:${address}`;
-    case 'SOL':
-      return `solana:${address}`;
-    default:
-      return `bitcoin:${address}`;
-  }
-};
-
-// Session deep link
-const getSessionUrl = (sessionId: string): string => {
-  // Session app deep link format
-  return `session:${sessionId}`;
-};
 
 export function ProfileCard({ profile, showContact = true, showActions = true }: ProfileCardProps) {
   const [copiedSession, setCopiedSession] = useState(false);
@@ -61,14 +38,12 @@ export function ProfileCard({ profile, showContact = true, showActions = true }:
 
   const handleOpenSession = () => {
     if (profile.session_id) {
-      // Try to open Session app with deep link
       window.open(getSessionUrl(profile.session_id), '_blank');
     }
   };
 
   const handlePayCrypto = () => {
     if (profile.crypto_address && profile.crypto_type) {
-      // Open crypto payment URL (will open wallet app if installed)
       window.location.href = getCryptoPaymentUrl(profile.crypto_type, profile.crypto_address);
     }
   };

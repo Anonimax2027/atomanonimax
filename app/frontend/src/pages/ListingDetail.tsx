@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ProfileCard } from '@/components/ProfileCard';
 import { useToast } from '@/components/ui/toast';
-import { client } from '@/lib/api';
+import { client, getCryptoPaymentUrl, getSessionUrl } from '@/lib/api';
 import { formatDate, truncateAddress } from '@/lib/utils';
 import { ArrowLeft, MapPin, Bitcoin, Tag, Calendar, MessageCircle, Loader2, ExternalLink, Send, Copy, Check } from 'lucide-react';
 
@@ -30,30 +30,6 @@ interface Profile {
   city: string;
   bio: string;
 }
-
-// Crypto payment URL generators
-const getCryptoPaymentUrl = (cryptoType: string, address: string, amount?: number): string => {
-  const amountParam = amount ? `?amount=${amount}` : '';
-  switch (cryptoType?.toUpperCase()) {
-    case 'BTC':
-      return `bitcoin:${address}${amountParam}`;
-    case 'ETH':
-      return `ethereum:${address}${amountParam}`;
-    case 'XMR':
-      return `monero:${address}${amountParam}`;
-    case 'LTC':
-      return `litecoin:${address}${amountParam}`;
-    case 'SOL':
-      return `solana:${address}${amountParam}`;
-    default:
-      return `bitcoin:${address}${amountParam}`;
-  }
-};
-
-// Session deep link
-const getSessionUrl = (sessionId: string): string => {
-  return `session:${sessionId}`;
-};
 
 export function ListingDetail() {
   const { id } = useParams();
@@ -108,8 +84,8 @@ export function ListingDetail() {
   const handlePayCrypto = () => {
     if (ownerProfile?.crypto_address) {
       const cryptoType = listing?.crypto_type || ownerProfile.crypto_type;
-      const amount = listing?.price;
-      window.location.href = getCryptoPaymentUrl(cryptoType, ownerProfile.crypto_address, amount);
+      // No amount included - user will enter it manually
+      window.location.href = getCryptoPaymentUrl(cryptoType, ownerProfile.crypto_address);
       addToast('Ouverture du portefeuille...', 'info');
     }
   };
@@ -244,14 +220,14 @@ export function ListingDetail() {
                       </Button>
                     )}
 
-                    {/* Payer Button */}
+                    {/* Payer Button - Without amount */}
                     {ownerProfile.crypto_address && (
                       <Button
                         onClick={handlePayCrypto}
                         className="w-full gap-2 h-12 text-base bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 shadow-lg shadow-emerald-500/25"
                       >
                         <Send className="h-5 w-5" />
-                        Payer {listing.price} {listing.crypto_type}
+                        Payer en {listing.crypto_type}
                       </Button>
                     )}
 
