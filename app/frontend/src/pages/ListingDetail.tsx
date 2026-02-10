@@ -4,9 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ProfileCard } from '@/components/ProfileCard';
+import { useToast } from '@/components/ui/toast';
 import { client } from '@/lib/api';
-import { formatDate } from '@/lib/utils';
-import { ArrowLeft, MapPin, Bitcoin, Tag, Calendar, MessageCircle, Loader2, ExternalLink } from 'lucide-react';
+import { formatDate, truncateAddress } from '@/lib/utils';
+import { ArrowLeft, MapPin, Bitcoin, Tag, Calendar, MessageCircle, Loader2, ExternalLink, Send, Copy, Check } from 'lucide-react';
 
 interface Listing {
   id: number;
@@ -30,12 +31,38 @@ interface Profile {
   bio: string;
 }
 
+// Crypto payment URL generators
+const getCryptoPaymentUrl = (cryptoType: string, address: string, amount?: number): string => {
+  const amountParam = amount ? `?amount=${amount}` : '';
+  switch (cryptoType?.toUpperCase()) {
+    case 'BTC':
+      return `bitcoin:${address}${amountParam}`;
+    case 'ETH':
+      return `ethereum:${address}${amountParam}`;
+    case 'XMR':
+      return `monero:${address}${amountParam}`;
+    case 'LTC':
+      return `litecoin:${address}${amountParam}`;
+    case 'SOL':
+      return `solana:${address}${amountParam}`;
+    default:
+      return `bitcoin:${address}${amountParam}`;
+  }
+};
+
+// Session deep link
+const getSessionUrl = (sessionId: string): string => {
+  return `session:${sessionId}`;
+};
+
 export function ListingDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { addToast } = useToast();
   const [listing, setListing] = useState<Listing | null>(null);
   const [ownerProfile, setOwnerProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [copiedAddress, setCopiedAddress] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -68,6 +95,31 @@ export function ListingDetail() {
       console.error('Error loading listing:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleOpenSession = () => {
+    if (ownerProfile?.session_id) {
+      window.open(getSessionUrl(ownerProfile.session_id), '_blank');
+      addToast('Ouverture de Session...', 'info');
+    }
+  };
+
+  const handlePayCrypto = () => {
+    if (ownerProfile?.crypto_address) {
+      const cryptoType = listing?.crypto_type || ownerProfile.crypto_type;
+      const amount = listing?.price;
+      window.location.href = getCryptoPaymentUrl(cryptoType, ownerProfile.crypto_address, amount);
+      addToast('Ouverture du portefeuille...', 'info');
+    }
+  };
+
+  const copyAddress = async () => {
+    if (ownerProfile?.crypto_address) {
+      await navigator.clipboard.writeText(ownerProfile.crypto_address);
+      setCopiedAddress(true);
+      addToast('Adresse copiée !', 'success');
+      setTimeout(() => setCopiedAddress(false), 2000);
     }
   };
 
@@ -172,24 +224,78 @@ export function ListingDetail() {
           <div className="space-y-6">
             {ownerProfile ? (
               <>
-                <ProfileCard profile={ownerProfile} showContact={true} />
+                <ProfileCard profile={ownerProfile} showContact={true} showActions={false} />
                 
-                {ownerProfile.session_id && (
-                  <Card>
-                    <CardContent className="p-4">
-                      <a
-                        href={`https://getsession.org`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center justify-center gap-2 text-cyan-400 hover:text-cyan-300 transition-colors"
+                {/* Action Buttons - Prominent */}
+                <Card className="border-cyan-500/30 bg-gradient-to-br from-slate-900 to-slate-800">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg text-center">Contacter le vendeur</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {/* Discuter Button */}
+                    {ownerProfile.session_id && (
+                      <Button
+                        onClick={handleOpenSession}
+                        className="w-full gap-2 h-12 text-base bg-gradient-to-r from-cyan-500 to-cyan-600 hover:from-cyan-400 hover:to-cyan-500 shadow-lg shadow-cyan-500/25"
                       >
                         <MessageCircle className="h-5 w-5" />
-                        Contacter via Session
+                        Discuter sur Session
                         <ExternalLink className="h-4 w-4" />
-                      </a>
-                    </CardContent>
-                  </Card>
-                )}
+                      </Button>
+                    )}
+
+                    {/* Payer Button */}
+                    {ownerProfile.crypto_address && (
+                      <Button
+                        onClick={handlePayCrypto}
+                        className="w-full gap-2 h-12 text-base bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 shadow-lg shadow-emerald-500/25"
+                      >
+                        <Send className="h-5 w-5" />
+                        Payer {listing.price} {listing.crypto_type}
+                      </Button>
+                    )}
+
+                    {/* Copy Address */}
+                    {ownerProfile.crypto_address && (
+                      <div className="pt-2 border-t border-slate-700">
+                        <p className="text-xs text-slate-500 mb-2 text-center">
+                          Ou copier l'adresse manuellement :
+                        </p>
+                        <button
+                          onClick={copyAddress}
+                          className="w-full flex items-center justify-between p-2 rounded-lg bg-slate-800/50 border border-slate-700 hover:border-slate-600 transition-colors"
+                        >
+                          <span className="font-mono text-xs text-slate-400 truncate">
+                            {truncateAddress(ownerProfile.crypto_address, 10)}
+                          </span>
+                          {copiedAddress ? (
+                            <Check className="h-4 w-4 text-emerald-400 shrink-0" />
+                          ) : (
+                            <Copy className="h-4 w-4 text-slate-500 shrink-0" />
+                          )}
+                        </button>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Session Download Link */}
+                <Card>
+                  <CardContent className="p-4 text-center">
+                    <p className="text-xs text-slate-500 mb-2">
+                      Vous n'avez pas Session ?
+                    </p>
+                    <a
+                      href="https://getsession.org/download"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-cyan-400 hover:text-cyan-300 transition-colors flex items-center justify-center gap-1"
+                    >
+                      Télécharger Session
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </CardContent>
+                </Card>
               </>
             ) : (
               <Card>

@@ -1,7 +1,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { AnonymaxIdDisplay } from '@/components/AnonymaxIdDisplay';
-import { MapPin, MessageCircle, Wallet, Copy, Check } from 'lucide-react';
+import { MapPin, MessageCircle, Wallet, Copy, Check, ExternalLink, Send } from 'lucide-react';
 import { useState } from 'react';
 import { truncateAddress } from '@/lib/utils';
 
@@ -15,9 +16,34 @@ interface ProfileCardProps {
     bio: string;
   };
   showContact?: boolean;
+  showActions?: boolean;
 }
 
-export function ProfileCard({ profile, showContact = true }: ProfileCardProps) {
+// Crypto payment URL generators
+const getCryptoPaymentUrl = (cryptoType: string, address: string): string => {
+  switch (cryptoType?.toUpperCase()) {
+    case 'BTC':
+      return `bitcoin:${address}`;
+    case 'ETH':
+      return `ethereum:${address}`;
+    case 'XMR':
+      return `monero:${address}`;
+    case 'LTC':
+      return `litecoin:${address}`;
+    case 'SOL':
+      return `solana:${address}`;
+    default:
+      return `bitcoin:${address}`;
+  }
+};
+
+// Session deep link
+const getSessionUrl = (sessionId: string): string => {
+  // Session app deep link format
+  return `session:${sessionId}`;
+};
+
+export function ProfileCard({ profile, showContact = true, showActions = true }: ProfileCardProps) {
   const [copiedSession, setCopiedSession] = useState(false);
   const [copiedCrypto, setCopiedCrypto] = useState(false);
 
@@ -31,6 +57,20 @@ export function ProfileCard({ profile, showContact = true }: ProfileCardProps) {
     await navigator.clipboard.writeText(profile.crypto_address);
     setCopiedCrypto(true);
     setTimeout(() => setCopiedCrypto(false), 2000);
+  };
+
+  const handleOpenSession = () => {
+    if (profile.session_id) {
+      // Try to open Session app with deep link
+      window.open(getSessionUrl(profile.session_id), '_blank');
+    }
+  };
+
+  const handlePayCrypto = () => {
+    if (profile.crypto_address && profile.crypto_type) {
+      // Open crypto payment URL (will open wallet app if installed)
+      window.location.href = getCryptoPaymentUrl(profile.crypto_type, profile.crypto_address);
+    }
   };
 
   return (
@@ -63,6 +103,7 @@ export function ProfileCard({ profile, showContact = true }: ProfileCardProps) {
               <button
                 onClick={copySessionId}
                 className="text-cyan-400 hover:text-cyan-300 transition-colors"
+                title="Copier l'ID Session"
               >
                 {copiedSession ? (
                   <Check className="h-4 w-4 text-emerald-400" />
@@ -87,6 +128,7 @@ export function ProfileCard({ profile, showContact = true }: ProfileCardProps) {
               <button
                 onClick={copyCryptoAddress}
                 className="text-emerald-400 hover:text-emerald-300 transition-colors"
+                title="Copier l'adresse"
               >
                 {copiedCrypto ? (
                   <Check className="h-4 w-4" />
@@ -98,6 +140,35 @@ export function ProfileCard({ profile, showContact = true }: ProfileCardProps) {
             <p className="font-mono text-xs text-slate-400">
               {truncateAddress(profile.crypto_address, 12)}
             </p>
+          </div>
+        )}
+
+        {/* Action Buttons */}
+        {showActions && (
+          <div className="flex gap-3 pt-2">
+            {profile.session_id && (
+              <Button
+                onClick={handleOpenSession}
+                className="flex-1 gap-2 bg-gradient-to-r from-cyan-500 to-cyan-600 hover:from-cyan-400 hover:to-cyan-500"
+              >
+                <MessageCircle className="h-4 w-4" />
+                Discuter
+                <ExternalLink className="h-3 w-3" />
+              </Button>
+            )}
+            {profile.crypto_address && (
+              <Button
+                onClick={handlePayCrypto}
+                variant="outline"
+                className="flex-1 gap-2 border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
+              >
+                <Send className="h-4 w-4" />
+                Payer
+                <Badge variant="success" className="ml-1 text-xs">
+                  {profile.crypto_type}
+                </Badge>
+              </Button>
+            )}
           </div>
         )}
       </CardContent>
