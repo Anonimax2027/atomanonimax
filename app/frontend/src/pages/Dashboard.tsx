@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -9,8 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { AnonymaxIdDisplay } from '@/components/AnonymaxIdDisplay';
 import { ListingCard } from '@/components/ListingCard';
 import { useToast } from '@/components/ui/toast';
-import { client, generateAnonymaxId, CRYPTO_TYPES } from '@/lib/api';
-import { Plus, Save, Loader2, RefreshCw } from 'lucide-react';
+import { client, generateAnonymaxId, CRYPTO_TYPES, CITIES } from '@/lib/api';
+import { Plus, Save, Loader2, RefreshCw, HelpCircle, ExternalLink } from 'lucide-react';
 
 interface Profile {
   id?: number;
@@ -39,12 +39,6 @@ interface User {
     id: string;
   };
 }
-
-const CITIES = [
-  'Paris', 'Lyon', 'Marseille', 'Toulouse', 'Nice', 'Nantes', 'Strasbourg',
-  'Montpellier', 'Bordeaux', 'Lille', 'Rennes', 'Reims', 'Toulon', 'Grenoble',
-  'Autre'
-];
 
 export function Dashboard() {
   const navigate = useNavigate();
@@ -204,7 +198,16 @@ export function Dashboard() {
 
                 {/* Session ID */}
                 <div className="space-y-2">
-                  <Label htmlFor="session_id">Session ID</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="session_id">Session ID</Label>
+                    <Link
+                      to="/guide/session"
+                      className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
+                    >
+                      <HelpCircle className="h-3 w-3" />
+                      Comment obtenir mon ID ?
+                    </Link>
+                  </div>
                   <Input
                     id="session_id"
                     placeholder="05abc123..."

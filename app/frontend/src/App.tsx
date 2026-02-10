@@ -1,19 +1,23 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
-import { ToastProvider } from '@/components/ui/toast';
 import { Home } from '@/pages/Home';
 import { Dashboard } from '@/pages/Dashboard';
 import { Listings } from '@/pages/Listings';
 import { CreateListing } from '@/pages/CreateListing';
 import { ListingDetail } from '@/pages/ListingDetail';
 import { Search } from '@/pages/Search';
-import AuthCallback from '@/pages/AuthCallback';
+import { SessionGuide } from '@/pages/SessionGuide';
+import { ToastProvider } from '@/components/ui/toast';
 import { client } from '@/lib/api';
+import AuthCallback from '@/pages/AuthCallback';
 
 interface User {
-  id: string;
+  data?: {
+    id: string;
+    email?: string;
+  };
 }
 
 function App() {
@@ -26,43 +30,46 @@ function App() {
 
   const checkAuth = async () => {
     try {
-      const response = await client.auth.me();
-      if (response.data) {
-        setUser({ id: response.data.id });
+      const userData = await client.auth.me();
+      if (userData?.data?.id) {
+        setUser(userData);
       }
     } catch (error) {
-      console.log('Not authenticated');
+      console.error('Auth check error:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleLogout = () => {
-    setUser(null);
+  const handleLogin = async () => {
+    await client.auth.toLogin();
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
+  const handleLogout = async () => {
+    await client.auth.logout();
+    setUser(null);
+  };
 
   return (
     <ToastProvider>
       <Router>
         <div className="min-h-screen bg-slate-950 flex flex-col">
-          <Header user={user} onLogout={handleLogout} />
+          <Header 
+            user={user} 
+            loading={loading}
+            onLogin={handleLogin} 
+            onLogout={handleLogout} 
+          />
           <main className="flex-1">
             <Routes>
-              <Route path="/" element={<Home user={user} />} />
+              <Route path="/" element={<Home user={user} onLogin={handleLogin} />} />
               <Route path="/auth/callback" element={<AuthCallback />} />
-              <Route path="/dashboard" element={<Dashboard user={user} />} />
-              <Route path="/listings" element={<Listings user={user} />} />
-              <Route path="/listings/new" element={<CreateListing user={user} />} />
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/listings" element={<Listings />} />
               <Route path="/listings/:id" element={<ListingDetail />} />
-              <Route path="/search" element={<Search user={user} />} />
+              <Route path="/create-listing" element={<CreateListing />} />
+              <Route path="/search" element={<Search />} />
+              <Route path="/guide/session" element={<SessionGuide />} />
             </Routes>
           </main>
           <Footer />
