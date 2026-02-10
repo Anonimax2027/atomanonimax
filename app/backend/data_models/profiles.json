@@ -1,0 +1,58 @@
+{
+    "title": "profiles",
+    "type": "object",
+    "description": "User profiles with anonymous identities",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "User ID from auth system"
+        },
+        "anonimax_id": {
+            "type": "string",
+            "description": "Unique Anonimax ID (format: ANX-XXXXXX)"
+        },
+        "session_id": {
+            "type": "string",
+            "description": "Session messenger ID for anonymous contact"
+        },
+        "crypto_address": {
+            "type": "string",
+            "description": "Preferred cryptocurrency wallet address"
+        },
+        "crypto_type": {
+            "type": "string",
+            "description": "Type of cryptocurrency (BTC, ETH, XMR, etc.)"
+        },
+        "city": {
+            "type": "string",
+            "description": "User city for location-based search"
+        },
+        "bio": {
+            "type": "string",
+            "description": "Short bio or description"
+        },
+        "is_active": {
+            "type": "boolean",
+            "description": "Whether the profile is active"
+        },
+        "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Profile creation timestamp"
+        },
+        "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last update timestamp"
+        }
+    },
+    "required": [
+        "id",
+        "user_id",
+        "anonimax_id"
+    ]
+}

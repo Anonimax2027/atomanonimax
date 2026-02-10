@@ -1,0 +1,50 @@
+[
+    {
+        "name": "Services numériques",
+        "slug": "services-numeriques",
+        "description": "Développement web, design, marketing digital",
+        "icon": "Monitor"
+    },
+    {
+        "name": "Consulting",
+        "slug": "consulting",
+        "description": "Conseil et expertise professionnelle",
+        "icon": "Briefcase"
+    },
+    {
+        "name": "Formation",
+        "slug": "formation",
+        "description": "Cours et formations en ligne",
+        "icon": "GraduationCap"
+    },
+    {
+        "name": "Rédaction",
+        "slug": "redaction",
+        "description": "Rédaction de contenu, traduction",
+        "icon": "FileText"
+    },
+    {
+        "name": "Graphisme",
+        "slug": "graphisme",
+        "description": "Design graphique, logos, illustrations",
+        "icon": "Palette"
+    },
+    {
+        "name": "Audio/Vidéo",
+        "slug": "audio-video",
+        "description": "Production audio et vidéo",
+        "icon": "Video"
+    },
+    {
+        "name": "Développement",
+        "slug": "developpement",
+        "description": "Programmation et développement logiciel",
+        "icon": "Code"
+    },
+    {
+        "name": "Autre",
+        "slug": "autre",
+        "description": "Autres services",
+        "icon": "MoreHorizontal"
+    }
+]

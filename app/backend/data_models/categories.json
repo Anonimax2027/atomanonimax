@@ -1,0 +1,32 @@
+{
+    "title": "categories",
+    "type": "object",
+    "description": "Service categories for listings",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "name": {
+            "type": "string",
+            "description": "Category name"
+        },
+        "slug": {
+            "type": "string",
+            "description": "URL-friendly category identifier"
+        },
+        "description": {
+            "type": "string",
+            "description": "Category description"
+        },
+        "icon": {
+            "type": "string",
+            "description": "Icon name for the category"
+        }
+    },
+    "required": [
+        "id",
+        "name",
+        "slug"
+    ]
+}

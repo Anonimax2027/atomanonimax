@@ -1,0 +1,208 @@
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { ProfileCard } from '@/components/ProfileCard';
+import { client } from '@/lib/api';
+import { formatDate } from '@/lib/utils';
+import { ArrowLeft, MapPin, Bitcoin, Tag, Calendar, MessageCircle, Loader2, ExternalLink } from 'lucide-react';
+
+interface Listing {
+  id: number;
+  user_id: string;
+  title: string;
+  description: string;
+  category: string;
+  city: string;
+  price: number;
+  crypto_type: string;
+  tags: string;
+  created_at: string;
+}
+
+interface Profile {
+  anonimax_id: string;
+  session_id: string;
+  crypto_address: string;
+  crypto_type: string;
+  city: string;
+  bio: string;
+}
+
+export function ListingDetail() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [listing, setListing] = useState<Listing | null>(null);
+  const [ownerProfile, setOwnerProfile] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (id) {
+      loadListing();
+    }
+  }, [id]);
+
+  const loadListing = async () => {
+    try {
+      // Get listing
+      const listingResponse = await client.entities.listings.get({ id: id! });
+      const listingData = listingResponse.data;
+      setListing(listingData);
+
+      // Get owner profile
+      if (listingData?.user_id) {
+        try {
+          const profileResponse = await client.entities.profiles.queryAll({
+            query: { user_id: listingData.user_id },
+            limit: 1,
+          });
+          if (profileResponse.data.items && profileResponse.data.items.length > 0) {
+            setOwnerProfile(profileResponse.data.items[0]);
+          }
+        } catch (error) {
+          console.error('Error loading owner profile:', error);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading listing:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const tags = listing?.tags?.split(',').filter(Boolean) || [];
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 pt-20 flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-cyan-400" />
+      </div>
+    );
+  }
+
+  if (!listing) {
+    return (
+      <div className="min-h-screen bg-slate-950 pt-20 pb-12">
+        <div className="max-w-4xl mx-auto px-4 text-center py-20">
+          <h2 className="text-2xl font-bold text-white mb-4">Annonce non trouvée</h2>
+          <p className="text-slate-400 mb-6">Cette annonce n'existe pas ou a été supprimée.</p>
+          <Button onClick={() => navigate('/listings')}>
+            Voir toutes les annonces
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-950 pt-20 pb-12">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Back Button */}
+        <Button
+          variant="ghost"
+          className="mb-6 gap-2"
+          onClick={() => navigate(-1)}
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Retour aux annonces
+        </Button>
+
+        <div className="grid lg:grid-cols-3 gap-8">
+          {/* Main Content */}
+          <div className="lg:col-span-2">
+            <Card>
+              <CardHeader>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <Badge variant="purple" className="mb-3">
+                      {listing.category}
+                    </Badge>
+                    <CardTitle className="text-2xl">{listing.title}</CardTitle>
+                  </div>
+                  <div className="text-right">
+                    <div className="flex items-center gap-1 text-2xl font-bold text-emerald-400">
+                      <Bitcoin className="h-6 w-6" />
+                      {listing.price}
+                    </div>
+                    <div className="text-sm text-slate-400">{listing.crypto_type}</div>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Meta Info */}
+                <div className="flex flex-wrap gap-4 text-sm text-slate-400">
+                  {listing.city && (
+                    <div className="flex items-center gap-1">
+                      <MapPin className="h-4 w-4" />
+                      {listing.city}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1">
+                    <Calendar className="h-4 w-4" />
+                    {formatDate(listing.created_at)}
+                  </div>
+                </div>
+
+                {/* Description */}
+                <div>
+                  <h3 className="text-lg font-semibold text-white mb-3">Description</h3>
+                  <p className="text-slate-300 whitespace-pre-wrap">{listing.description}</p>
+                </div>
+
+                {/* Tags */}
+                {tags.length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-white mb-3">Mots-clés</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {tags.map((tag, index) => (
+                        <Badge key={index} variant="secondary" className="gap-1">
+                          <Tag className="h-3 w-3" />
+                          {tag.trim()}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Sidebar - Contact */}
+          <div className="space-y-6">
+            {ownerProfile ? (
+              <>
+                <ProfileCard profile={ownerProfile} showContact={true} />
+                
+                {ownerProfile.session_id && (
+                  <Card>
+                    <CardContent className="p-4">
+                      <a
+                        href={`https://getsession.org`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center gap-2 text-cyan-400 hover:text-cyan-300 transition-colors"
+                      >
+                        <MessageCircle className="h-5 w-5" />
+                        Contacter via Session
+                        <ExternalLink className="h-4 w-4" />
+                      </a>
+                    </CardContent>
+                  </Card>
+                )}
+              </>
+            ) : (
+              <Card>
+                <CardContent className="p-6 text-center">
+                  <p className="text-slate-400">
+                    Le vendeur n'a pas encore configuré son profil de contact.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

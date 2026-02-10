@@ -1,0 +1,66 @@
+{
+    "title": "listings",
+    "type": "object",
+    "description": "Service listings and classifieds",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "User ID of the listing owner"
+        },
+        "profile_id": {
+            "type": "integer",
+            "description": "Reference to the profile"
+        },
+        "title": {
+            "type": "string",
+            "description": "Listing title"
+        },
+        "description": {
+            "type": "string",
+            "description": "Detailed description of the service"
+        },
+        "category": {
+            "type": "string",
+            "description": "Service category"
+        },
+        "city": {
+            "type": "string",
+            "description": "City where service is offered"
+        },
+        "price": {
+            "type": "number",
+            "description": "Price in cryptocurrency"
+        },
+        "crypto_type": {
+            "type": "string",
+            "description": "Accepted cryptocurrency type"
+        },
+        "tags": {
+            "type": "string",
+            "description": "Comma-separated keywords/tags"
+        },
+        "is_active": {
+            "type": "boolean",
+            "description": "Whether the listing is active"
+        },
+        "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Listing creation timestamp"
+        },
+        "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last update timestamp"
+        }
+    },
+    "required": [
+        "id",
+        "user_id",
+        "title"
+    ]
+}
