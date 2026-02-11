@@ -9,6 +9,7 @@ import { CreateListing } from '@/pages/CreateListing';
 import { ListingDetail } from '@/pages/ListingDetail';
 import { Search } from '@/pages/Search';
 import { SessionGuide } from '@/pages/SessionGuide';
+import Pricing from '@/pages/Pricing';
 import { ToastProvider } from '@/components/ui/toast';
 import { client } from '@/lib/api';
 import AuthCallback from '@/pages/AuthCallback';
@@ -70,6 +71,7 @@ function App() {
               <Route path="/create-listing" element={<CreateListing />} />
               <Route path="/search" element={<Search />} />
               <Route path="/guide/session" element={<SessionGuide />} />
+              <Route path="/pricing" element={<Pricing />} />
             </Routes>
           </main>
           <Footer />

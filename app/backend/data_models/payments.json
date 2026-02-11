@@ -1,0 +1,45 @@
+{
+    "title": "payments",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "User ID"
+        },
+        "plan_type": {
+            "type": "string",
+            "description": "Plan purchased: single or monthly"
+        },
+        "amount": {
+            "type": "number",
+            "description": "Amount in USDC"
+        },
+        "crypto_type": {
+            "type": "string",
+            "description": "Cryptocurrency used for payment"
+        },
+        "tx_hash": {
+            "type": "string",
+            "description": "Transaction hash for verification"
+        },
+        "status": {
+            "type": "string",
+            "description": "Payment status: pending, confirmed, failed"
+        },
+        "created_at": {
+            "type": "string",
+            "description": "Created timestamp"
+        }
+    },
+    "required": [
+        "id",
+        "user_id",
+        "plan_type",
+        "amount",
+        "status"
+    ]
+}

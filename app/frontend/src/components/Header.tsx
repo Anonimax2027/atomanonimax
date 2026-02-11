@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Menu, X, Shield, LogOut, User, Search, List, BookOpen } from 'lucide-react';
+import { Menu, X, Shield, LogOut, User, Search, List, BookOpen, CreditCard } from 'lucide-react';
 
 interface HeaderProps {
   user: { data?: { id: string } } | null;
@@ -17,6 +17,7 @@ export function Header({ user, loading, onLogin, onLogout }: HeaderProps) {
   const navigation = [
     { name: 'Annonces', href: '/listings', icon: List },
     { name: 'Rechercher', href: '/search', icon: Search },
+    { name: 'Tarifs', href: '/pricing', icon: CreditCard },
     { name: 'Guide Session', href: '/guide/session', icon: BookOpen },
   ];
 

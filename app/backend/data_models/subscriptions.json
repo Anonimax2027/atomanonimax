@@ -1,0 +1,47 @@
+{
+    "title": "subscriptions",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "User ID"
+        },
+        "plan_type": {
+            "type": "string",
+            "description": "Plan type: single or monthly"
+        },
+        "single_credits": {
+            "type": "integer",
+            "description": "Number of single listing credits remaining"
+        },
+        "monthly_posts_today": {
+            "type": "integer",
+            "description": "Number of posts made today for monthly plan"
+        },
+        "monthly_expires_at": {
+            "type": "string",
+            "description": "Monthly plan expiration date YYYY-MM-DD"
+        },
+        "last_post_date": {
+            "type": "string",
+            "description": "Last post date for daily limit reset YYYY-MM-DD"
+        },
+        "created_at": {
+            "type": "string",
+            "description": "Created timestamp"
+        },
+        "updated_at": {
+            "type": "string",
+            "description": "Updated timestamp"
+        }
+    },
+    "required": [
+        "id",
+        "user_id",
+        "plan_type"
+    ]
+}
