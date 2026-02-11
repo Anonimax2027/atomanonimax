@@ -1,362 +1,311 @@
-import json
 import logging
-from typing import List, Optional
-
-from datetime import datetime, date
-
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+import uuid
+from datetime import datetime, timedelta
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from typing import Optional
+import re
 
 from core.database import get_db
-from services.listings import ListingsService
-from dependencies.auth import get_current_user
-from schemas.auth import UserResponse
+from models.users import Users
+from models.profiles import Profiles
+from models.listings import Listings
+from models.payments import Payments
 
-# Set up logging
-logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/api/v1/listings", tags=["listings"])
 
-router = APIRouter(prefix="/api/v1/entities/listings", tags=["listings"])
+# Personal info patterns to detect
+PERSONAL_INFO_PATTERNS = [
+    (r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', 'Email detectado'),
+    (r'(\+55\s?)?(\(?\d{2}\)?[\s.-]?)?\d{4,5}[\s.-]?\d{4}', 'Telefone detectado'),
+    (r'whatsapp|wpp|zap|whats', 'WhatsApp detectado'),
+    (r'\d{3}\.?\d{3}\.?\d{3}-?\d{2}', 'CPF detectado'),
+]
 
+def check_personal_info(text: str) -> list:
+    """Check for personal information in text"""
+    issues = []
+    for pattern, message in PERSONAL_INFO_PATTERNS:
+        if re.search(pattern, text, re.IGNORECASE):
+            issues.append(message)
+    return issues
 
-# ---------- Pydantic Schemas ----------
-class ListingsData(BaseModel):
-    """Entity data schema (for create/update)"""
-    profile_id: int = None
+class ListingCreate(BaseModel):
     title: str
-    description: str = None
-    category: str = None
-    city: str = None
-    price: float = None
-    crypto_type: str = None
-    tags: str = None
-    is_active: bool = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    content: str
+    category: str
+    state: Optional[str] = None
 
+class PaymentSubmit(BaseModel):
+    listing_id: str
+    tx_hash: str
 
-class ListingsUpdateData(BaseModel):
-    """Update entity data (partial updates allowed)"""
-    profile_id: Optional[int] = None
-    title: Optional[str] = None
-    description: Optional[str] = None
-    category: Optional[str] = None
-    city: Optional[str] = None
-    price: Optional[float] = None
-    crypto_type: Optional[str] = None
-    tags: Optional[str] = None
-    is_active: Optional[bool] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-
-
-class ListingsResponse(BaseModel):
-    """Entity response schema"""
-    id: int
-    user_id: str
-    profile_id: Optional[int] = None
-    title: str
-    description: Optional[str] = None
-    category: Optional[str] = None
-    city: Optional[str] = None
-    price: Optional[float] = None
-    crypto_type: Optional[str] = None
-    tags: Optional[str] = None
-    is_active: Optional[bool] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
-
-
-class ListingsListResponse(BaseModel):
-    """List response schema"""
-    items: List[ListingsResponse]
-    total: int
-    skip: int
-    limit: int
-
-
-class ListingsBatchCreateRequest(BaseModel):
-    """Batch create request"""
-    items: List[ListingsData]
-
-
-class ListingsBatchUpdateItem(BaseModel):
-    """Batch update item"""
-    id: int
-    updates: ListingsUpdateData
-
-
-class ListingsBatchUpdateRequest(BaseModel):
-    """Batch update request"""
-    items: List[ListingsBatchUpdateItem]
-
-
-class ListingsBatchDeleteRequest(BaseModel):
-    """Batch delete request"""
-    ids: List[int]
-
-
-# ---------- Routes ----------
-@router.get("", response_model=ListingsListResponse)
-async def query_listingss(
-    query: str = Query(None, description="Query conditions (JSON string)"),
-    sort: str = Query(None, description="Sort field (prefix with '-' for descending)"),
-    skip: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(20, ge=1, le=2000, description="Max number of records to return"),
-    fields: str = Query(None, description="Comma-separated list of fields to return"),
-    current_user: UserResponse = Depends(get_current_user),
+@router.post("/create")
+async def create_listing(
+    data: ListingCreate,
+    token: str,
     db: AsyncSession = Depends(get_db),
 ):
-    """Query listingss with filtering, sorting, and pagination (user can only see their own records)"""
-    logger.debug(f"Querying listingss: query={query}, sort={sort}, skip={skip}, limit={limit}, fields={fields}")
-    
-    service = ListingsService(db)
+    """Create a new listing"""
     try:
-        # Parse query JSON if provided
-        query_dict = None
-        if query:
-            try:
-                query_dict = json.loads(query)
-            except json.JSONDecodeError:
-                raise HTTPException(status_code=400, detail="Invalid query JSON format")
+        result = await db.execute(select(Users))
+        users = result.scalars().all()
         
-        result = await service.get_list(
-            skip=skip, 
-            limit=limit,
-            query_dict=query_dict,
-            sort=sort,
-            user_id=str(current_user.id),
+        if not users:
+            raise HTTPException(status_code=401, detail="Não autorizado")
+        
+        user = users[0]
+        
+        # Validate title
+        if len(data.title) < 5:
+            raise HTTPException(status_code=400, detail="Título muito curto (mín 5 caracteres)")
+        if len(data.title) > 200:
+            raise HTTPException(status_code=400, detail="Título muito longo (máx 200 caracteres)")
+        
+        # Validate content
+        if len(data.content) < 20:
+            raise HTTPException(status_code=400, detail="Descrição muito curta (mín 20 caracteres)")
+        if len(data.content) > 5000:
+            raise HTTPException(status_code=400, detail="Descrição muito longa (máx 5000 caracteres)")
+        
+        # Check for personal info
+        title_issues = check_personal_info(data.title)
+        content_issues = check_personal_info(data.content)
+        all_issues = title_issues + content_issues
+        
+        if all_issues:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": "Informações pessoais detectadas",
+                    "issues": all_issues
+                }
+            )
+        
+        # Get user's profile for anonimax_id
+        result = await db.execute(select(Profiles).where(Profiles.user_id == user.id))
+        profile = result.scalar_one_or_none()
+        
+        if not profile:
+            raise HTTPException(status_code=400, detail="Perfil não encontrado")
+        
+        # Create listing
+        listing_id = str(uuid.uuid4())
+        listing = Listings(
+            id=listing_id,
+            user_id=user.id,
+            anonimax_id=profile.anonimax_id,
+            title=data.title,
+            content=data.content,
+            category=data.category,
+            state=data.state,
+            status="pending",
+            payment_status="pending",
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
         )
-        logger.debug(f"Found {result['total']} listingss")
-        return result
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error querying listingss: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-
-
-@router.get("/all", response_model=ListingsListResponse)
-async def query_listingss_all(
-    query: str = Query(None, description="Query conditions (JSON string)"),
-    sort: str = Query(None, description="Sort field (prefix with '-' for descending)"),
-    skip: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(20, ge=1, le=2000, description="Max number of records to return"),
-    fields: str = Query(None, description="Comma-separated list of fields to return"),
-    db: AsyncSession = Depends(get_db),
-):
-    # Query listingss with filtering, sorting, and pagination without user limitation
-    logger.debug(f"Querying listingss: query={query}, sort={sort}, skip={skip}, limit={limit}, fields={fields}")
-
-    service = ListingsService(db)
-    try:
-        # Parse query JSON if provided
-        query_dict = None
-        if query:
-            try:
-                query_dict = json.loads(query)
-            except json.JSONDecodeError:
-                raise HTTPException(status_code=400, detail="Invalid query JSON format")
-
-        result = await service.get_list(
-            skip=skip,
-            limit=limit,
-            query_dict=query_dict,
-            sort=sort
+        db.add(listing)
+        
+        # Create payment record
+        payment = Payments(
+            id=str(uuid.uuid4()),
+            user_id=user.id,
+            anonimax_id=profile.anonimax_id,
+            listing_id=listing_id,
+            amount=10.0,
+            currency="BRZ",
+            network="Polygon",
+            type="listing",
+            status="pending",
+            created_at=datetime.now(),
         )
-        logger.debug(f"Found {result['total']} listingss")
-        return result
+        db.add(payment)
+        
+        await db.commit()
+        await db.refresh(listing)
+        
+        return {
+            "id": listing.id,
+            "anonimax_id": listing.anonimax_id,
+            "title": listing.title,
+            "status": listing.status,
+            "payment_status": listing.payment_status,
+            "message": "Anúncio criado! Aguardando pagamento.",
+        }
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error querying listingss: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        logging.error(f"Create listing error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-
-@router.get("/{id}", response_model=ListingsResponse)
-async def get_listings(
-    id: int,
-    fields: str = Query(None, description="Comma-separated list of fields to return"),
-    current_user: UserResponse = Depends(get_current_user),
+@router.get("/")
+async def list_listings(
+    token: str,
+    state: Optional[str] = None,
+    category: Optional[str] = None,
+    search: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
-    """Get a single listings by ID (user can only see their own records)"""
-    logger.debug(f"Fetching listings with id: {id}, fields={fields}")
-    
-    service = ListingsService(db)
+    """List active listings"""
     try:
-        result = await service.get_by_id(id, user_id=str(current_user.id))
-        if not result:
-            logger.warning(f"Listings with id {id} not found")
-            raise HTTPException(status_code=404, detail="Listings not found")
+        query = select(Listings).where(Listings.status == "active")
         
-        return result
+        if state:
+            query = query.where(Listings.state == state)
+        if category:
+            query = query.where(Listings.category == category)
+        
+        result = await db.execute(query.order_by(Listings.created_at.desc()).limit(100))
+        listings = result.scalars().all()
+        
+        # Filter by search if provided
+        if search:
+            search_lower = search.lower()
+            listings = [
+                l for l in listings
+                if search_lower in (l.title or "").lower()
+                or search_lower in (l.content or "").lower()
+            ]
+        
+        return {
+            "listings": [
+                {
+                    "id": l.id,
+                    "anonimax_id": l.anonimax_id,
+                    "title": l.title,
+                    "content": l.content,
+                    "category": l.category,
+                    "state": l.state,
+                    "status": l.status,
+                    "created_at": l.created_at,
+                }
+                for l in listings
+            ]
+        }
+    except Exception as e:
+        logging.error(f"List listings error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/my-listings")
+async def get_my_listings(
+    token: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get current user's listings"""
+    try:
+        result = await db.execute(select(Users))
+        users = result.scalars().all()
+        
+        if not users:
+            raise HTTPException(status_code=401, detail="Não autorizado")
+        
+        user = users[0]
+        
+        result = await db.execute(
+            select(Listings).where(Listings.user_id == user.id).order_by(Listings.created_at.desc())
+        )
+        listings = result.scalars().all()
+        
+        return {
+            "listings": [
+                {
+                    "id": l.id,
+                    "anonimax_id": l.anonimax_id,
+                    "title": l.title,
+                    "content": l.content,
+                    "category": l.category,
+                    "state": l.state,
+                    "status": l.status,
+                    "payment_status": l.payment_status,
+                    "created_at": l.created_at,
+                }
+                for l in listings
+            ]
+        }
+    except Exception as e:
+        logging.error(f"Get my listings error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{listing_id}")
+async def get_listing(
+    listing_id: str,
+    token: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get listing details with author profile"""
+    try:
+        result = await db.execute(select(Listings).where(Listings.id == listing_id))
+        listing = result.scalar_one_or_none()
+        
+        if not listing:
+            raise HTTPException(status_code=404, detail="Anúncio não encontrado")
+        
+        # Get author's profile
+        result = await db.execute(select(Profiles).where(Profiles.anonimax_id == listing.anonimax_id))
+        profile = result.scalar_one_or_none()
+        
+        return {
+            "listing": {
+                "id": listing.id,
+                "anonimax_id": listing.anonimax_id,
+                "title": listing.title,
+                "content": listing.content,
+                "category": listing.category,
+                "state": listing.state,
+                "status": listing.status,
+                "created_at": listing.created_at,
+            },
+            "profile": {
+                "session_id": profile.session_id if profile else None,
+                "crypto_type": profile.crypto_type if profile else None,
+                "crypto_network": profile.crypto_network if profile else None,
+                "crypto_address": profile.crypto_address if profile else None,
+            } if profile else None,
+        }
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching listings {id}: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        logging.error(f"Get listing error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-
-@router.post("", response_model=ListingsResponse, status_code=201)
-async def create_listings(
-    data: ListingsData,
-    current_user: UserResponse = Depends(get_current_user),
+@router.post("/submit-payment")
+async def submit_payment(
+    data: PaymentSubmit,
+    token: str,
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new listings"""
-    logger.debug(f"Creating new listings with data: {data}")
-    
-    service = ListingsService(db)
+    """Submit payment proof for a listing"""
     try:
-        result = await service.create(data.model_dump(), user_id=str(current_user.id))
-        if not result:
-            raise HTTPException(status_code=400, detail="Failed to create listings")
+        result = await db.execute(select(Users))
+        users = result.scalars().all()
         
-        logger.info(f"Listings created successfully with id: {result.id}")
-        return result
-    except ValueError as e:
-        logger.error(f"Validation error creating listings: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Error creating listings: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-
-
-@router.post("/batch", response_model=List[ListingsResponse], status_code=201)
-async def create_listingss_batch(
-    request: ListingsBatchCreateRequest,
-    current_user: UserResponse = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Create multiple listingss in a single request"""
-    logger.debug(f"Batch creating {len(request.items)} listingss")
-    
-    service = ListingsService(db)
-    results = []
-    
-    try:
-        for item_data in request.items:
-            result = await service.create(item_data.model_dump(), user_id=str(current_user.id))
-            if result:
-                results.append(result)
+        if not users:
+            raise HTTPException(status_code=401, detail="Não autorizado")
         
-        logger.info(f"Batch created {len(results)} listingss successfully")
-        return results
-    except Exception as e:
-        await db.rollback()
-        logger.error(f"Error in batch create: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Batch create failed: {str(e)}")
-
-
-@router.put("/batch", response_model=List[ListingsResponse])
-async def update_listingss_batch(
-    request: ListingsBatchUpdateRequest,
-    current_user: UserResponse = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Update multiple listingss in a single request (requires ownership)"""
-    logger.debug(f"Batch updating {len(request.items)} listingss")
-    
-    service = ListingsService(db)
-    results = []
-    
-    try:
-        for item in request.items:
-            # Only include non-None values for partial updates
-            update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
-            result = await service.update(item.id, update_dict, user_id=str(current_user.id))
-            if result:
-                results.append(result)
+        user = users[0]
         
-        logger.info(f"Batch updated {len(results)} listingss successfully")
-        return results
-    except Exception as e:
-        await db.rollback()
-        logger.error(f"Error in batch update: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Batch update failed: {str(e)}")
-
-
-@router.put("/{id}", response_model=ListingsResponse)
-async def update_listings(
-    id: int,
-    data: ListingsUpdateData,
-    current_user: UserResponse = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Update an existing listings (requires ownership)"""
-    logger.debug(f"Updating listings {id} with data: {data}")
-
-    service = ListingsService(db)
-    try:
-        # Only include non-None values for partial updates
-        update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
-        result = await service.update(id, update_dict, user_id=str(current_user.id))
-        if not result:
-            logger.warning(f"Listings with id {id} not found for update")
-            raise HTTPException(status_code=404, detail="Listings not found")
+        # Find the payment record
+        result = await db.execute(
+            select(Payments).where(
+                Payments.listing_id == data.listing_id,
+                Payments.user_id == user.id
+            )
+        )
+        payment = result.scalar_one_or_none()
         
-        logger.info(f"Listings {id} updated successfully")
-        return result
-    except HTTPException:
-        raise
-    except ValueError as e:
-        logger.error(f"Validation error updating listings {id}: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Error updating listings {id}: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-
-
-@router.delete("/batch")
-async def delete_listingss_batch(
-    request: ListingsBatchDeleteRequest,
-    current_user: UserResponse = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Delete multiple listingss by their IDs (requires ownership)"""
-    logger.debug(f"Batch deleting {len(request.ids)} listingss")
-    
-    service = ListingsService(db)
-    deleted_count = 0
-    
-    try:
-        for item_id in request.ids:
-            success = await service.delete(item_id, user_id=str(current_user.id))
-            if success:
-                deleted_count += 1
+        if not payment:
+            raise HTTPException(status_code=404, detail="Pagamento não encontrado")
         
-        logger.info(f"Batch deleted {deleted_count} listingss successfully")
-        return {"message": f"Successfully deleted {deleted_count} listingss", "deleted_count": deleted_count}
-    except Exception as e:
-        await db.rollback()
-        logger.error(f"Error in batch delete: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Batch delete failed: {str(e)}")
-
-
-@router.delete("/{id}")
-async def delete_listings(
-    id: int,
-    current_user: UserResponse = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Delete a single listings by ID (requires ownership)"""
-    logger.debug(f"Deleting listings with id: {id}")
-    
-    service = ListingsService(db)
-    try:
-        success = await service.delete(id, user_id=str(current_user.id))
-        if not success:
-            logger.warning(f"Listings with id {id} not found for deletion")
-            raise HTTPException(status_code=404, detail="Listings not found")
+        payment.tx_hash = data.tx_hash
+        payment.updated_at = datetime.now()
         
-        logger.info(f"Listings {id} deleted successfully")
-        return {"message": "Listings deleted successfully", "id": id}
+        await db.commit()
+        
+        return {"message": "Comprovante enviado! Aguarde verificação."}
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error deleting listings {id}: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        logging.error(f"Submit payment error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

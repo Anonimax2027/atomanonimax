@@ -1,103 +1,94 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ProfileCard } from '@/components/ProfileCard';
-import { useToast } from '@/components/ui/toast';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { client } from '@/lib/api';
-import { Search as SearchIcon, User, Loader2 } from 'lucide-react';
-
-interface SearchProps {
-  user: { id: string } | null;
-}
+import { ProfileCard } from '@/components/ProfileCard';
+import { Loader2, Search as SearchIcon, User, AlertCircle } from 'lucide-react';
 
 interface Profile {
   id: number;
-  anonimax_id: string;
-  session_id: string;
-  crypto_address: string;
-  crypto_type: string;
-  city: string;
-  bio: string;
+  user_id: string;
+  anonymax_id: string;
+  session_id?: string;
+  crypto_address?: string;
+  crypto_type?: string;
+  description?: string;
 }
 
-export function Search({ user }: SearchProps) {
-  const navigate = useNavigate();
-  const { addToast } = useToast();
+export function Search() {
   const [searchTerm, setSearchTerm] = useState('');
   const [searching, setSearching] = useState(false);
-  const [result, setResult] = useState<Profile | null>(null);
+  const [results, setResults] = useState<Profile[]>([]);
   const [searched, setSearched] = useState(false);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!searchTerm.trim()) {
-      addToast('Veuillez entrer un Anonimax ID', 'error');
-      return;
-    }
+    if (!searchTerm.trim()) return;
 
     setSearching(true);
     setSearched(true);
-    setResult(null);
-
+    
     try {
+      // Buscar por Anonimax ID
       const response = await client.entities.profiles.queryAll({
-        query: { anonimax_id: searchTerm.toUpperCase().trim() },
-        limit: 1,
+        query: {},
       });
-
-      if (response.data.items && response.data.items.length > 0) {
-        setResult(response.data.items[0]);
-      }
+      
+      const profiles = response.data.items || [];
+      
+      // Filtrar por ID ou descrição
+      const filtered = profiles.filter((p: Profile) => 
+        p.anonymax_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (p.description && p.description.toLowerCase().includes(searchTerm.toLowerCase()))
+      );
+      
+      setResults(filtered);
     } catch (error) {
-      console.error('Error searching:', error);
-      addToast('Erreur lors de la recherche', 'error');
+      console.error('Search error:', error);
+      setResults([]);
     } finally {
       setSearching(false);
     }
   };
 
-  if (!user) {
-    navigate('/');
-    return null;
-  }
-
   return (
     <div className="min-h-screen bg-slate-950 pt-20 pb-12">
-      <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Rechercher un Profil</h1>
-          <p className="text-slate-400">
-            Trouvez un utilisateur par son Anonimax ID
+        <div className="text-center mb-12">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-cyan-500 to-purple-500 mb-6">
+            <SearchIcon className="h-8 w-8 text-white" />
+          </div>
+          <h1 className="text-4xl font-bold text-white mb-4">
+            Buscar Perfis
+          </h1>
+          <p className="text-xl text-slate-400 max-w-2xl mx-auto">
+            Encontre usuários pelo Anonimax ID ou palavras-chave
           </p>
         </div>
 
         {/* Search Form */}
         <Card className="mb-8">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <SearchIcon className="h-5 w-5 text-cyan-400" />
-              Recherche par Anonimax ID
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+          <CardContent className="p-6">
             <form onSubmit={handleSearch} className="flex gap-4">
-              <Input
-                placeholder="ANX-XXXXXX"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value.toUpperCase())}
-                className="font-mono"
-              />
-              <Button type="submit" disabled={searching} className="gap-2 shrink-0">
+              <div className="flex-1 relative">
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+                <Input
+                  placeholder="Digite o Anonimax ID (ex: ANX-ABC123) ou palavras-chave..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 h-12 text-lg"
+                />
+              </div>
+              <Button type="submit" size="lg" disabled={searching} className="gap-2">
                 {searching ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="h-5 w-5 animate-spin" />
                 ) : (
-                  <SearchIcon className="h-4 w-4" />
+                  <SearchIcon className="h-5 w-5" />
                 )}
-                Rechercher
+                Buscar
               </Button>
             </form>
           </CardContent>
@@ -106,43 +97,56 @@ export function Search({ user }: SearchProps) {
         {/* Results */}
         {searched && (
           <div>
-            {result ? (
-              <div className="space-y-4">
-                <h2 className="text-xl font-semibold text-white">Résultat</h2>
-                <ProfileCard profile={result} showContact={true} />
-              </div>
-            ) : (
+            <h2 className="text-xl font-semibold text-white mb-4">
+              {results.length} resultado(s) encontrado(s)
+            </h2>
+
+            {results.length === 0 ? (
               <Card>
                 <CardContent className="py-12 text-center">
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-slate-800 flex items-center justify-center">
-                    <User className="h-8 w-8 text-slate-600" />
-                  </div>
-                  <h3 className="text-xl font-semibold text-white mb-2">
-                    Aucun profil trouvé
+                  <AlertCircle className="h-12 w-12 text-slate-600 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-slate-400 mb-2">
+                    Nenhum perfil encontrado
                   </h3>
-                  <p className="text-slate-400">
-                    Aucun utilisateur avec l'ID "{searchTerm}" n'a été trouvé.
+                  <p className="text-slate-500">
+                    Verifique o ID digitado ou tente outras palavras-chave
                   </p>
                 </CardContent>
               </Card>
+            ) : (
+              <div className="grid gap-6">
+                {results.map((profile) => (
+                  <ProfileCard key={profile.id} profile={profile} />
+                ))}
+              </div>
             )}
           </div>
         )}
 
-        {/* Help */}
+        {/* Tips */}
         {!searched && (
           <Card>
-            <CardContent className="py-8 text-center">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-cyan-500/10 flex items-center justify-center">
-                <User className="h-8 w-8 text-cyan-400" />
-              </div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Comment ça marche ?
-              </h3>
-              <p className="text-slate-400 max-w-md mx-auto">
-                Entrez l'Anonimax ID de la personne que vous recherchez (format: ANX-XXXXXX) 
-                pour voir son profil et ses informations de contact.
-              </p>
+            <CardHeader>
+              <CardTitle>Dicas de Busca</CardTitle>
+              <CardDescription>
+                Como encontrar perfis no Anonimax
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-3 text-slate-400">
+                <li className="flex items-start gap-2">
+                  <span className="text-cyan-400">•</span>
+                  <span>Digite o <strong className="text-white">Anonimax ID completo</strong> (ex: ANX-ABC123) para encontrar um usuário específico</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-cyan-400">•</span>
+                  <span>Use <strong className="text-white">palavras-chave</strong> para buscar na descrição dos perfis</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-cyan-400">•</span>
+                  <span>Os resultados mostram apenas perfis <strong className="text-white">públicos e ativos</strong></span>
+                </li>
+              </ul>
             </CardContent>
           </Card>
         )}

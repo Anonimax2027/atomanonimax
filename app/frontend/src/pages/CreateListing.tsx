@@ -3,328 +3,298 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useToast } from '@/components/ui/toast';
-import { client, CRYPTO_TYPES } from '@/lib/api';
-import { ArrowLeft, Loader2, Send, AlertCircle, CreditCard } from 'lucide-react';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-
-interface Category {
-  id: number;
-  name: string;
-  slug: string;
-}
-
-interface User {
-  data?: {
-    id: string;
-  };
-}
-
-interface Subscription {
-  id: number;
-  plan_type: string;
-  single_credits?: number;
-  monthly_posts_today?: number;
-  monthly_expires_at?: string;
-  last_post_date?: string;
-}
-
-const CITIES = [
-  'Paris', 'Lyon', 'Marseille', 'Toulouse', 'Nice', 'Nantes', 'Strasbourg',
-  'Montpellier', 'Bordeaux', 'Lille', 'Rennes', 'Reims', 'Toulon', 'Grenoble',
-  'Autre'
-];
-
-const MAX_DAILY_POSTS = 3;
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Shield,
+  ArrowLeft,
+  FileText,
+  Loader2,
+  AlertTriangle,
+  CheckCircle,
+  Copy,
+  ExternalLink,
+  Bitcoin,
+} from 'lucide-react';
+import { BRAZILIAN_STATES, LISTING_CATEGORIES, PAYMENT_ADDRESS } from '@/lib/supabase';
 
 export function CreateListing() {
   const navigate = useNavigate();
-  const { addToast } = useToast();
-  const [user, setUser] = useState<User | null>(null);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [subscription, setSubscription] = useState<Subscription | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [canPost, setCanPost] = useState(false);
-  const [subscriptionMessage, setSubscriptionMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [step, setStep] = useState<'form' | 'payment' | 'success'>('form');
+  const [error, setError] = useState('');
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const [createdListing, setCreatedListing] = useState<any>(null);
+  const [copied, setCopied] = useState(false);
 
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    category: '',
-    city: '',
-    price: '',
-    crypto_type: 'BTC',
-    tags: '',
-  });
+  // Form state
+  const [title, setTitle] = useState('');
+  const [content, setContent] = useState('');
+  const [category, setCategory] = useState('');
+  const [state, setState] = useState('');
+
+  const token = localStorage.getItem('anonimax_token');
 
   useEffect(() => {
-    checkAuth();
-    loadCategories();
-  }, []);
-
-  const checkAuth = async () => {
-    try {
-      const userData = await client.auth.me();
-      if (userData?.data?.id) {
-        setUser(userData);
-        await checkSubscription();
-      } else {
-        navigate('/');
-      }
-    } catch (error) {
-      console.error('Auth error:', error);
-      navigate('/');
-    } finally {
-      setLoading(false);
+    if (!token) {
+      navigate('/login');
     }
-  };
+  }, [navigate, token]);
 
-  const checkSubscription = async () => {
-    try {
-      const response = await client.entities.subscriptions.query({
-        sort: '-created_at',
-        limit: 1
-      });
+  // Check for personal info in real-time
+  useEffect(() => {
+    const checkText = (text: string): string[] => {
+      const issues: string[] = [];
       
-      const subs = response.data.items || [];
+      // Email
+      if (/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/gi.test(text)) {
+        issues.push('Email detectado');
+      }
       
-      if (subs.length === 0) {
-        setCanPost(false);
-        setSubscriptionMessage('Vous n\'avez pas d\'abonnement actif. Achetez un plan pour publier des annonces.');
-        return;
+      // Phone
+      if (/(\+55\s?)?(\(?\d{2}\)?[\s.-]?)?\d{4,5}[\s.-]?\d{4}/g.test(text)) {
+        issues.push('Número de telefone detectado');
       }
-
-      const activeSub = subs[0];
-      setSubscription(activeSub);
-
-      const today = new Date().toISOString().split('T')[0];
-
-      if (activeSub.plan_type === 'single') {
-        if (activeSub.single_credits && activeSub.single_credits > 0) {
-          setCanPost(true);
-          setSubscriptionMessage(`Vous avez ${activeSub.single_credits} crédit(s) d'annonce unique.`);
-        } else {
-          setCanPost(false);
-          setSubscriptionMessage('Vous avez utilisé tous vos crédits d\'annonce unique. Achetez un nouveau plan.');
-        }
-      } else if (activeSub.plan_type === 'monthly') {
-        // Vérifier si l'abonnement mensuel est expiré
-        if (activeSub.monthly_expires_at && activeSub.monthly_expires_at < today) {
-          setCanPost(false);
-          setSubscriptionMessage('Votre abonnement mensuel a expiré. Renouvelez-le pour continuer à publier.');
-          return;
-        }
-
-        // Vérifier la limite quotidienne
-        let postsToday = activeSub.monthly_posts_today || 0;
-        
-        // Réinitialiser le compteur si c'est un nouveau jour
-        if (activeSub.last_post_date !== today) {
-          postsToday = 0;
-        }
-
-        if (postsToday < MAX_DAILY_POSTS) {
-          setCanPost(true);
-          const remaining = MAX_DAILY_POSTS - postsToday;
-          setSubscriptionMessage(`Abonnement mensuel actif. ${remaining} annonce(s) restante(s) aujourd'hui.`);
-        } else {
-          setCanPost(false);
-          setSubscriptionMessage('Vous avez atteint la limite de 3 annonces par jour. Revenez demain !');
-        }
+      
+      // WhatsApp
+      if (/whatsapp|wpp|zap|whats/gi.test(text)) {
+        issues.push('Referência ao WhatsApp detectada');
       }
-    } catch (error) {
-      console.error('Error checking subscription:', error);
-      setCanPost(false);
-      setSubscriptionMessage('Erreur lors de la vérification de l\'abonnement.');
-    }
-  };
+      
+      // CPF
+      if (/\d{3}\.?\d{3}\.?\d{3}-?\d{2}/g.test(text)) {
+        issues.push('CPF detectado');
+      }
+      
+      return issues;
+    };
 
-  const loadCategories = async () => {
-    try {
-      const response = await client.entities.categories.queryAll({
-        sort: 'name',
-      });
-      setCategories(response.data.items || []);
-    } catch (error) {
-      console.error('Error loading categories:', error);
-    }
-  };
+    const titleIssues = checkText(title);
+    const contentIssues = checkText(content);
+    setWarnings([...titleIssues, ...contentIssues]);
+  }, [title, content]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!user?.data?.id) {
-      addToast('Vous devez être connecté', 'error');
+    if (warnings.length > 0) {
+      setError('Remova as informações de identificação pessoal antes de continuar.');
       return;
     }
 
-    if (!canPost) {
-      addToast('Vous n\'avez pas d\'abonnement actif', 'error');
-      return;
-    }
+    setError('');
+    setIsLoading(true);
 
-    if (!formData.title || !formData.description || !formData.category || !formData.price) {
-      addToast('Veuillez remplir tous les champs obligatoires', 'error');
-      return;
-    }
-
-    setSubmitting(true);
     try {
-      // Créer l'annonce
-      await client.entities.listings.create({
-        data: {
-          user_id: user.data.id,
-          title: formData.title,
-          description: formData.description,
-          category: formData.category,
-          city: formData.city,
-          price: parseFloat(formData.price),
-          crypto_type: formData.crypto_type,
-          tags: formData.tags,
-        },
+      const response = await fetch(`/api/v1/listings/create?token=${token}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, content, category, state: state || null }),
       });
 
-      // Mettre à jour l'abonnement
-      if (subscription) {
-        const today = new Date().toISOString().split('T')[0];
-        
-        if (subscription.plan_type === 'single') {
-          // Décrémenter le crédit
-          await client.entities.subscriptions.update({
-            id: String(subscription.id),
-            data: {
-              single_credits: (subscription.single_credits || 1) - 1,
-              updated_at: new Date().toISOString()
-            }
-          });
-        } else if (subscription.plan_type === 'monthly') {
-          // Incrémenter le compteur quotidien
-          let postsToday = subscription.monthly_posts_today || 0;
-          if (subscription.last_post_date !== today) {
-            postsToday = 0;
-          }
-          
-          await client.entities.subscriptions.update({
-            id: String(subscription.id),
-            data: {
-              monthly_posts_today: postsToday + 1,
-              last_post_date: today,
-              updated_at: new Date().toISOString()
-            }
-          });
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (typeof data.detail === 'object') {
+          throw new Error(data.detail.message);
         }
+        throw new Error(data.detail || 'Erro ao criar anúncio');
       }
-      
-      addToast('Annonce créée avec succès !', 'success');
-      navigate('/dashboard');
-    } catch (error) {
-      console.error('Error creating listing:', error);
-      addToast('Erreur lors de la création', 'error');
+
+      setCreatedListing(data);
+      setStep('payment');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao criar anúncio');
     } finally {
-      setSubmitting(false);
+      setIsLoading(false);
     }
   };
 
-  if (loading) {
+  const handleCopyAddress = () => {
+    navigator.clipboard.writeText(PAYMENT_ADDRESS.address);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  if (step === 'payment') {
     return (
-      <div className="min-h-screen bg-slate-950 pt-20 flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-cyan-400" />
+      <div className="min-h-screen bg-slate-950">
+        <header className="bg-slate-900 border-b border-slate-800">
+          <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-4">
+            <Link to="/dashboard">
+              <Button variant="ghost" size="icon">
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+            </Link>
+            <div className="flex items-center gap-2">
+              <Shield className="h-8 w-8 text-cyan-400" />
+              <span className="text-xl font-bold text-white">Pagamento</span>
+            </div>
+          </div>
+        </header>
+
+        <div className="max-w-2xl mx-auto px-4 py-8">
+          <Card className="bg-slate-900 border-slate-800">
+            <CardHeader className="text-center">
+              <div className="w-16 h-16 rounded-full bg-orange-500/20 flex items-center justify-center mx-auto mb-4">
+                <Bitcoin className="h-8 w-8 text-orange-400" />
+              </div>
+              <CardTitle className="text-white">Anúncio Criado!</CardTitle>
+              <CardDescription className="text-slate-400">
+                Para ativar seu anúncio, envie o pagamento abaixo
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Payment Info */}
+              <div className="p-6 rounded-lg bg-slate-800/50 border border-slate-700">
+                <div className="text-center mb-6">
+                  <div className="text-4xl font-bold text-white mb-1">
+                    {PAYMENT_ADDRESS.amount} {PAYMENT_ADDRESS.crypto}
+                  </div>
+                  <div className="text-slate-400">na rede {PAYMENT_ADDRESS.network}</div>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs text-slate-500 uppercase">Endereço para pagamento</label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <code className="flex-1 p-3 rounded bg-slate-900 text-cyan-400 text-sm break-all">
+                        {PAYMENT_ADDRESS.address}
+                      </code>
+                      <Button variant="outline" size="sm" onClick={handleCopyAddress}>
+                        {copied ? <CheckCircle className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Instructions */}
+              <div className="p-4 rounded-lg bg-cyan-500/10 border border-cyan-500/30">
+                <h4 className="text-white font-medium mb-2">Após o pagamento:</h4>
+                <ol className="text-sm text-slate-400 space-y-2">
+                  <li>1. Copie o hash da transação (TX Hash)</li>
+                  <li>2. Entre em contato com o administrador via Session</li>
+                  <li>3. Envie seu Anonimax ID e o hash da transação</li>
+                  <li>4. Seu anúncio será ativado após verificação</li>
+                </ol>
+              </div>
+
+              {/* BRZ Guide */}
+              <div className="p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+                <p className="text-sm text-emerald-400 mb-2">
+                  💡 Não tem BRZ? Compre via PIX no app Chainless!
+                </p>
+                <Link to="/brz-guide">
+                  <Button variant="link" className="text-cyan-400 p-0 h-auto gap-1">
+                    Ver guia de compra
+                    <ExternalLink className="h-3 w-3" />
+                  </Button>
+                </Link>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-3">
+                <Link to="/dashboard" className="flex-1">
+                  <Button variant="outline" className="w-full">
+                    Voltar ao Dashboard
+                  </Button>
+                </Link>
+                <Button
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                  onClick={() => {
+                    navigator.clipboard.writeText('055b6c64f73fd6286156ad142b783cff64ef57e1e8444de2c0bd1781587e505368');
+                    alert('ID Session do administrador copiado!\n\nAbra o app Session para enviar o comprovante.');
+                  }}
+                >
+                  Contatar Admin
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 pt-20 pb-12">
-      <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
-        <Button
-          variant="ghost"
-          className="mb-6 gap-2"
-          onClick={() => navigate(-1)}
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Retour
-        </Button>
+    <div className="min-h-screen bg-slate-950">
+      {/* Header */}
+      <header className="bg-slate-900 border-b border-slate-800">
+        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-4">
+          <Link to="/dashboard">
+            <Button variant="ghost" size="icon">
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+          </Link>
+          <div className="flex items-center gap-2">
+            <Shield className="h-8 w-8 text-cyan-400" />
+            <span className="text-xl font-bold text-white">Novo Anúncio</span>
+          </div>
+        </div>
+      </header>
 
-        {/* Subscription Status Alert */}
-        {!canPost ? (
-          <Alert className="mb-6 border-amber-500/50 bg-amber-500/10">
-            <AlertCircle className="h-4 w-4 text-amber-500" />
-            <AlertTitle className="text-amber-500">Abonnement requis</AlertTitle>
-            <AlertDescription className="text-slate-300">
-              {subscriptionMessage}
-              <Link to="/pricing" className="block mt-3">
-                <Button className="gap-2 bg-gradient-to-r from-cyan-500 to-purple-500">
-                  <CreditCard className="h-4 w-4" />
-                  Voir les plans
-                </Button>
-              </Link>
-            </AlertDescription>
-          </Alert>
-        ) : (
-          <Alert className="mb-6 border-emerald-500/50 bg-emerald-500/10">
-            <AlertCircle className="h-4 w-4 text-emerald-500" />
-            <AlertTitle className="text-emerald-500">Abonnement actif</AlertTitle>
-            <AlertDescription className="text-slate-300">
-              {subscriptionMessage}
-            </AlertDescription>
-          </Alert>
-        )}
-
-        <Card className={!canPost ? 'opacity-50 pointer-events-none' : ''}>
+      <div className="max-w-2xl mx-auto px-4 py-8">
+        <Card className="bg-slate-900 border-slate-800">
           <CardHeader>
-            <CardTitle>Créer une annonce</CardTitle>
-            <CardDescription>
-              Publiez votre service ou offre de manière anonyme
+            <CardTitle className="text-white flex items-center gap-2">
+              <FileText className="h-5 w-5 text-cyan-400" />
+              Criar Anúncio
+            </CardTitle>
+            <CardDescription className="text-slate-400">
+              Preencha os dados do seu anúncio. Custo: 10 BRZ (Polygon)
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Warnings */}
+              {warnings.length > 0 && (
+                <div className="p-4 rounded-lg bg-red-500/20 border border-red-500/30">
+                  <div className="flex items-center gap-2 text-red-400 mb-2">
+                    <AlertTriangle className="h-5 w-5" />
+                    <span className="font-medium">Informações de identificação detectadas!</span>
+                  </div>
+                  <ul className="text-sm text-red-300 space-y-1">
+                    {warnings.map((warning, index) => (
+                      <li key={index}>• {warning}</li>
+                    ))}
+                  </ul>
+                  <p className="text-xs text-red-400 mt-2">
+                    Remova essas informações para manter seu anonimato.
+                  </p>
+                </div>
+              )}
+
               {/* Title */}
               <div className="space-y-2">
-                <Label htmlFor="title">Titre *</Label>
+                <label className="text-sm text-slate-400">Título do Anúncio</label>
                 <Input
-                  id="title"
-                  placeholder="Ex: Développement web freelance"
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  placeholder="Ex: Desenvolvimento de Sites Profissionais"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  maxLength={200}
                   required
-                  disabled={!canPost}
+                  className="bg-slate-800 border-slate-700 text-white"
                 />
-              </div>
-
-              {/* Description */}
-              <div className="space-y-2">
-                <Label htmlFor="description">Description *</Label>
-                <Textarea
-                  id="description"
-                  placeholder="Décrivez votre service en détail..."
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  rows={5}
-                  required
-                  disabled={!canPost}
-                />
+                <p className="text-xs text-slate-500">{title.length}/200 caracteres</p>
               </div>
 
               {/* Category */}
               <div className="space-y-2">
-                <Label htmlFor="category">Catégorie *</Label>
-                <Select
-                  value={formData.category}
-                  onValueChange={(value) => setFormData({ ...formData, category: value })}
-                  required
-                  disabled={!canPost}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sélectionner une catégorie" />
+                <label className="text-sm text-slate-400">Categoria</label>
+                <Select value={category} onValueChange={setCategory} required>
+                  <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
+                    <SelectValue placeholder="Selecione uma categoria" />
                   </SelectTrigger>
                   <SelectContent>
-                    {categories.map((cat) => (
-                      <SelectItem key={cat.id} value={cat.name}>
+                    {LISTING_CATEGORIES.map((cat) => (
+                      <SelectItem key={cat.code} value={cat.code}>
                         {cat.name}
                       </SelectItem>
                     ))}
@@ -332,90 +302,68 @@ export function CreateListing() {
                 </Select>
               </div>
 
-              {/* City */}
+              {/* State */}
               <div className="space-y-2">
-                <Label htmlFor="city">Ville</Label>
-                <Select
-                  value={formData.city}
-                  onValueChange={(value) => setFormData({ ...formData, city: value })}
-                  disabled={!canPost}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sélectionner une ville (optionnel)" />
+                <label className="text-sm text-slate-400">Estado (opcional)</label>
+                <Select value={state} onValueChange={setState}>
+                  <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
+                    <SelectValue placeholder="Selecione um estado" />
                   </SelectTrigger>
                   <SelectContent>
-                    {CITIES.map((city) => (
-                      <SelectItem key={city} value={city}>
-                        {city}
+                    {BRAZILIAN_STATES.map((s) => (
+                      <SelectItem key={s.code} value={s.code}>
+                        {s.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
 
-              {/* Price and Crypto */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="price">Prix *</Label>
-                  <Input
-                    id="price"
-                    type="number"
-                    step="0.0001"
-                    min="0"
-                    placeholder="0.00"
-                    value={formData.price}
-                    onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                    required
-                    disabled={!canPost}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="crypto_type">Crypto *</Label>
-                  <Select
-                    value={formData.crypto_type}
-                    onValueChange={(value) => setFormData({ ...formData, crypto_type: value })}
-                    disabled={!canPost}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {CRYPTO_TYPES.map((crypto) => (
-                        <SelectItem key={crypto} value={crypto}>
-                          {crypto}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {/* Tags */}
+              {/* Content */}
               <div className="space-y-2">
-                <Label htmlFor="tags">Mots-clés</Label>
-                <Input
-                  id="tags"
-                  placeholder="web, design, crypto (séparés par des virgules)"
-                  value={formData.tags}
-                  onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
-                  disabled={!canPost}
+                <label className="text-sm text-slate-400">Descrição do Anúncio</label>
+                <Textarea
+                  placeholder="Descreva seu serviço, produto ou o que você está buscando. NÃO inclua informações pessoais como email, telefone ou WhatsApp."
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  maxLength={5000}
+                  required
+                  className="bg-slate-800 border-slate-700 text-white min-h-40"
                 />
-                <p className="text-xs text-slate-500">
-                  Ajoutez des mots-clés pour améliorer la visibilité
-                </p>
+                <p className="text-xs text-slate-500">{content.length}/5000 caracteres</p>
               </div>
 
+              {/* Error */}
+              {error && (
+                <div className="p-3 rounded-lg bg-red-500/20 border border-red-500/30 text-red-400 text-sm">
+                  {error}
+                </div>
+              )}
+
+              {/* Info */}
+              <div className="p-4 rounded-lg bg-slate-800/50 border border-slate-700">
+                <h4 className="text-white font-medium mb-2">ℹ️ Importante:</h4>
+                <ul className="text-sm text-slate-400 space-y-1">
+                  <li>• Não inclua informações pessoais (email, telefone, CPF, WhatsApp)</li>
+                  <li>• Os interessados entrarão em contato via Session</li>
+                  <li>• Seu anúncio será ativado após confirmação do pagamento</li>
+                </ul>
+              </div>
+
+              {/* Submit */}
               <Button
                 type="submit"
-                disabled={submitting || !canPost}
-                className="w-full gap-2"
+                disabled={isLoading || warnings.length > 0 || !category}
+                className="w-full bg-gradient-to-r from-cyan-500 to-purple-500 hover:from-cyan-600 hover:to-purple-600"
               >
-                {submitting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                {isLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Criando...
+                  </>
                 ) : (
-                  <Send className="h-4 w-4" />
+                  'Criar Anúncio (10 BRZ)'
                 )}
-                Publier l'annonce
               </Button>
             </form>
           </CardContent>
